@@ -1,13 +1,16 @@
 # ------------------------------------------------------------------------------------
-# Release — compila o executável de arquivo único em Windows, Linux e macOS e
-# publica tudo numa Release do GitHub.
+# Release — compila o executável de arquivo único e publica tudo numa Release.
 #
 # Como disparar:
 #   1) ajuste a versão em mrlog/__init__.py (ex.: 1.1.0);
 #   2) crie e envie a tag:  git tag v1.1.0 && git push origin v1.1.0
 #
-# O GitHub Actions então: roda os testes -> compila nos 3 sistemas -> cria a
+# O GitHub Actions então: roda os testes -> compila (Windows e Linux são
+# obrigatórios; macOS entra assim que um runner fica livre) -> cria/atualiza a
 # Release "MR Logística vX.Y.Z" com os arquivos para download direto.
+#
+# OBS.: runners de macOS são escassos no plano gratuito e podem ficar na fila;
+# por isso o job de macOS é independente e NÃO segura a publicação dos demais.
 # ------------------------------------------------------------------------------------
 name: Release — executáveis
 
@@ -42,7 +45,7 @@ jobs:
       - name: Teste da interface gráfica
         run: xvfb-run -a -s "-screen 0 1400x900x24" python tests/gui_test.py
 
-  # ------------------------------------------------------------------ 2) compilação
+  # ------------------------------------------------------------------ 2) compilação principal
   build:
     name: Compilar (${{ matrix.nome }})
     needs: testes
@@ -57,9 +60,6 @@ jobs:
           - os: ubuntu-latest
             nome: Linux
             arquivo: MRLogistica-Linux-x64
-          - os: macos-13
-            nome: macOS
-            arquivo: MRLogistica-macOS.zip
     steps:
       - uses: actions/checkout@v4
 
@@ -78,7 +78,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements-dev.txt
 
-      - name: Conferência rápida (importa o pacote e roda o smoke test)
+      - name: Conferência rápida (smoke test)
         run: python tests/smoke_test.py
 
       - name: Compilar com PyInstaller (arquivo único)
@@ -95,12 +95,6 @@ jobs:
           cp dist/MRLogistica "dist/${{ matrix.arquivo }}"
           chmod +x "dist/${{ matrix.arquivo }}"
 
-      - name: Preparar arquivo de release (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          cd dist
-          ditto -c -k --keepParent MRLogistica.app "${{ matrix.arquivo }}"
-
       - name: Enviar artefato
         uses: actions/upload-artifact@v4
         with:
@@ -108,7 +102,7 @@ jobs:
           path: dist/${{ matrix.arquivo }}
           if-no-files-found: error
 
-  # ------------------------------------------------------------------ 3) publicação
+  # ------------------------------------------------------------------ 3) publicação (Windows + Linux)
   publicar:
     name: Publicar Release
     needs: build
@@ -135,13 +129,12 @@ jobs:
           files: |
             arquivos/MRLogistica-Windows-x64.exe
             arquivos/MRLogistica-Linux-x64
-            arquivos/MRLogistica-macOS.zip
           body: |
             ## Como instalar (Windows — o mais usado)
 
-            1. Baixe **MRLogistica-Windows-x64.exe** aqui embaixo (link direto deste arquivo);
+            1. Baixe **MRLogistica-Windows-x64.exe** aqui embaixo (link direto do arquivo);
             2. Dê **dois cliques** — não precisa instalar nada, não precisa de internet;
-            3. Na primeira abertura o Windows pode avisar "protetor SmartScreen":
+            3. Na primeira abertura o Windows pode avisar no SmartScreen:
                clique em *Mais informações* → *Executar assim mesmo*;
             4. Login inicial: usuário `admin` e senha `admin` (troque em *Usuários*).
 
@@ -151,4 +144,51 @@ jobs:
 
             ### Outros sistemas
             * **Linux:** `MRLogistica-Linux-x64` (dê permissão de execução: `chmod +x`)
-            * **macOS:** `MRLogistica-macOS.zip` (descompacte e abra o .app)
+            * **macOS:** `MRLogistica-macOS.zip` (entra nesta release assim que o runner
+              de macOS terminar a compilação; também dá para gerar em casa com
+              `scripts/build_macos.sh`)
+
+  # ------------------------------------------------------------------ 4) macOS (independente)
+  build-macos:
+    name: Compilar (macOS — opcional)
+    needs: testes
+    runs-on: macos-13
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Dependências do projeto
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+      - name: Compilar com PyInstaller
+        run: python -m PyInstaller mrlogistica.spec --noconfirm --clean
+      - name: Empacotar o .app
+        run: |
+          cd dist
+          ditto -c -k --keepParent MRLogistica.app MRLogistica-macOS.zip
+      - name: Enviar artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: executavel-macOS
+          path: dist/MRLogistica-macOS.zip
+          if-no-files-found: error
+
+  # Anexa o .zip de macOS à mesma Release quando o runner finalmente roda.
+  publicar-macos:
+    name: Anexar macOS à Release
+    needs: build-macos
+    if: needs.build-macos.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: executavel-macOS
+          path: arquivos
+      - name: Atualizar a Release existente
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: arquivos/MRLogistica-macOS.zip
