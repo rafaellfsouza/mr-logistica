@@ -1,0 +1,41 @@
+# ------------------------------------------------------------------ Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# ------------------------------------------------------------------ Build / PyInstaller
+build/
+dist/
+*.spec.bak
+release/
+
+# ------------------------------------------------------------------ Dados do usuário (nunca versionar!)
+*.db
+*.db-wal
+*.db-shm
+*.sqlite*
+backups/
+fotos/
+temp/
+.mrlogistica/
+erro-ultimo.txt
+
+# ------------------------------------------------------------------ Sistemas operacionais / editores
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+
+# ------------------------------------------------------------------ Segredos (jamais subir token/chave)
+.env
+*.pem
+*.key

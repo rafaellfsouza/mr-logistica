@@ -1,0 +1,5 @@
+# Dependências apenas para DESENVOLVEDORES (build e testes).
+-r requirements.txt
+
+pyinstaller>=6.0    # gera o executável de arquivo único (MRLogistica.exe)
+pytest>=8.0         # testes opcionais via pytest (os testes principais são scripts)

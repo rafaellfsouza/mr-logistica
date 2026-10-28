@@ -1,0 +1,154 @@
+# ------------------------------------------------------------------------------------
+# Release — compila o executável de arquivo único em Windows, Linux e macOS e
+# publica tudo numa Release do GitHub.
+#
+# Como disparar:
+#   1) ajuste a versão em mrlog/__init__.py (ex.: 1.1.0);
+#   2) crie e envie a tag:  git tag v1.1.0 && git push origin v1.1.0
+#
+# O GitHub Actions então: roda os testes -> compila nos 3 sistemas -> cria a
+# Release "MR Logística vX.Y.Z" com os arquivos para download direto.
+# ------------------------------------------------------------------------------------
+name: Release — executáveis
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  # ------------------------------------------------------------------ 1) testes
+  testes:
+    name: Testes antes de compilar
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Tkinter e Xvfb
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk xvfb
+      - name: Dependências
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+      - name: Teste de fumaça
+        run: python tests/smoke_test.py
+      - name: Teste da interface gráfica
+        run: xvfb-run -a -s "-screen 0 1400x900x24" python tests/gui_test.py
+
+  # ------------------------------------------------------------------ 2) compilação
+  build:
+    name: Compilar (${{ matrix.nome }})
+    needs: testes
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            nome: Windows
+            arquivo: MRLogistica-Windows-x64.exe
+          - os: ubuntu-latest
+            nome: Linux
+            arquivo: MRLogistica-Linux-x64
+          - os: macos-13
+            nome: macOS
+            arquivo: MRLogistica-macOS.zip
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Tkinter e Xvfb (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk xvfb
+
+      - name: Dependências do projeto
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+
+      - name: Conferência rápida (importa o pacote e roda o smoke test)
+        run: python tests/smoke_test.py
+
+      - name: Compilar com PyInstaller (arquivo único)
+        run: python -m PyInstaller mrlogistica.spec --noconfirm --clean
+
+      - name: Preparar arquivo de release (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Copy-Item "dist/MRLogistica.exe" "dist/${{ matrix.arquivo }}"
+
+      - name: Preparar arquivo de release (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cp dist/MRLogistica "dist/${{ matrix.arquivo }}"
+          chmod +x "dist/${{ matrix.arquivo }}"
+
+      - name: Preparar arquivo de release (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          cd dist
+          ditto -c -k --keepParent MRLogistica.app "${{ matrix.arquivo }}"
+
+      - name: Enviar artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: executavel-${{ matrix.nome }}
+          path: dist/${{ matrix.arquivo }}
+          if-no-files-found: error
+
+  # ------------------------------------------------------------------ 3) publicação
+  publicar:
+    name: Publicar Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: executavel-*
+          merge-multiple: true
+          path: arquivos
+
+      - name: Listar arquivos da release
+        run: ls -la arquivos
+
+      - name: Criar/atualizar a Release com os executáveis
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: MR Logística ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          make_latest: true
+          generate_release_notes: true
+          files: |
+            arquivos/MRLogistica-Windows-x64.exe
+            arquivos/MRLogistica-Linux-x64
+            arquivos/MRLogistica-macOS.zip
+          body: |
+            ## Como instalar (Windows — o mais usado)
+
+            1. Baixe **MRLogistica-Windows-x64.exe** aqui embaixo (link direto deste arquivo);
+            2. Dê **dois cliques** — não precisa instalar nada, não precisa de internet;
+            3. Na primeira abertura o Windows pode avisar "protetor SmartScreen":
+               clique em *Mais informações* → *Executar assim mesmo*;
+            4. Login inicial: usuário `admin` e senha `admin` (troque em *Usuários*).
+
+            Os seus dados ficam em `%USERPROFILE%\.mrlogistica` (banco SQLite local).
+            Para levar para outro computador, copie a pasta inteira ou use
+            *Backup e restauração* dentro do sistema.
+
+            ### Outros sistemas
+            * **Linux:** `MRLogistica-Linux-x64` (dê permissão de execução: `chmod +x`)
+            * **macOS:** `MRLogistica-macOS.zip` (descompacte e abra o .app)

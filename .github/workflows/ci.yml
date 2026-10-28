@@ -1,0 +1,40 @@
+# ------------------------------------------------------------------------------------
+# CI — roda os testes automáticos (camada de dados + interface gráfica completa)
+# a cada push/PR no branch principal. Não publica nada, só garante que nada quebrou.
+# ------------------------------------------------------------------------------------
+name: CI — testes
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  testes:
+    name: Testes (camada de dados + GUI)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Código-fonte
+        uses: actions/checkout@v4
+
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Dependências do sistema (Tkinter e Xvfb)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk xvfb
+
+      - name: Dependências do projeto
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+
+      - name: Teste de fumaça (banco, vendas, estoque, financeiro, relatórios)
+        run: python tests/smoke_test.py
+
+      - name: Teste da interface gráfica (todas as telas, sem janela real)
+        run: xvfb-run -a -s "-screen 0 1400x900x24" python tests/gui_test.py

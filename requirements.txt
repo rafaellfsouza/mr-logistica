@@ -1,0 +1,6 @@
+# Dependências de EXECUÇÃO do MR Logística (o resto é biblioteca padrão do Python).
+# Instale com:  pip install -r requirements.txt
+
+Pillow>=10.0        # fotos dos produtos, desenho do código de barras e etiquetas
+openpyxl>=3.1       # exportação de relatórios para Excel (.xlsx)
+reportlab>=4.0      # geração de PDF (recibos, relatórios, etiquetas, comprovantes)
